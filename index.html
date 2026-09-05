@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SoftRF settings tool ('general purpose') – offline</title>
+  <meta name="description" content="Generate NMEA PSRFC commands for SoftRF devices. Runs fully offline, no external resources.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='8' fill='%232563eb'/></svg>">
+
+  <meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1420" media="(prefers-color-scheme: dark)">
+
+  <!-- Gespeichertes Theme vor dem ersten Paint anwenden -->
+  <script>
+    try {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+
+  <style>
+    /* ---------- Design-Tokens ---------- */
+    :root {
+      color-scheme: light;
+      --bg: #f4f6fa; --surface: #ffffff; --text: #16202e; --muted: #5b6b80;
+      --border: #dde5ee; --accent: #2563eb; --accent-contrast: #ffffff;
+      --danger: #c22f2f; --ok: #1a7f37; --warn: #b45309; --radius: 14px;
+      --shadow: 0 1px 2px rgb(16 24 40 / .05), 0 10px 30px rgb(16 24 40 / .07);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0d1420; --surface: #16202f; --text: #e7edf6; --muted: #97a6bc;
+      --border: #263449; --accent: #6f9dff; --accent-contrast: #0d1420;
+      --danger: #ff8080; --ok: #4ade80; --warn: #fbbf24;
+      --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .35);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #0d1420; --surface: #16202f; --text: #e7edf6; --muted: #97a6bc;
+        --border: #263449; --accent: #6f9dff; --accent-contrast: #0d1420;
+        --danger: #ff8080; --ok: #4ade80; --warn: #fbbf24;
+        --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px rgb(0 0 0 / .35);
+      }
+    }
+
+    /* ---------- Basis ---------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      background: var(--bg); color: var(--text);
+      line-height: 1.6; -webkit-font-smoothing: antialiased;
+    }
+    .container { width: min(100% - 2.5rem, 68rem); margin-inline: auto; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+    /* ---------- Kopfzeile ---------- */
+    .site-header {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg);
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .header-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; min-height: 3.75rem; padding-block: .5rem;
+    }
+    .brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; }
+    .brand svg { color: var(--accent); flex: none; }
+    .brand small { display: block; font-weight: 400; color: var(--muted); font-size: .8rem; }
+    .header-actions { display: flex; align-items: center; gap: .55rem; }
+    .icon-btn {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      border-radius: 999px; width: 2.4rem; height: 2.4rem; font-size: 1.05rem; cursor: pointer;
+    }
+    .lang-switch {
+      display: inline-flex; overflow: hidden;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+    }
+    .lang-switch button {
+      border: 0; background: transparent; color: var(--muted);
+      font: inherit; font-size: .85rem; font-weight: 600;
+      padding: .4rem .75rem; cursor: pointer;
+    }
+    .lang-switch button + button { border-left: 1px solid var(--border); }
+    .lang-switch button[aria-pressed="true"] { background: var(--accent); color: var(--accent-contrast); }
+    .lang-switch button:hover { color: var(--text); }
+    .lang-switch button[aria-pressed="true"]:hover { color: var(--accent-contrast); }
+
+    /* ---------- Hilfstexte (NOTICE / WARNING) ---------- */
+    .notices { margin-bottom: 1.5rem; }
+    .info {
+      margin: 0 0 .75rem; padding: .6rem 1rem; font-size: .92rem; color: var(--muted);
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent); border-radius: 10px;
+    }
+    details.warn-box {
+      background: var(--surface); border: 1px solid var(--danger);
+      border-radius: 10px; padding: .7rem 1rem;
+    }
+    details.warn-box summary {
+      cursor: pointer; font-weight: 700; color: var(--danger); list-style-position: outside;
+    }
+    details.warn-box summary::before { content: "⚠️ "; }
+    details.warn-box p { margin: .6rem 0 0; font-size: .92rem; }
+    details.warn-box a { color: var(--danger); text-decoration: underline; }
+
+    /* ---------- Layout ---------- */
+    .layout { display: grid; gap: 1.5rem; padding-block: 0 1.5rem; align-items: start; }
+    @media (min-width: 62rem) {
+      .layout { grid-template-columns: minmax(0, 1fr) 24rem; }
+      .output-col { position: sticky; top: 4.75rem; }
+    }
+
+    /* ---------- Karten & Gruppen ---------- */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.1rem 1.4rem; box-shadow: var(--shadow);
+    }
+    .card + .card { margin-top: 1.25rem; }
+    .card h2 {
+      font-size: .78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin: .25rem 0 .35rem;
+    }
+
+    /* ---------- Einstellungs-Zeilen ---------- */
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; padding-block: .6rem;
+    }
+    .row + .row { border-top: 1px solid var(--border); }
+    .row-label { font-weight: 500; }
+    .row-label small { display: block; font-weight: 400; color: var(--muted); font-size: .82rem; }
+
+    /* ---------- Hilfe-Button & Flyout ---------- */
+    .help-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.2rem; height: 1.2rem; margin-left: .35rem; padding: 0;
+      border: 1px solid var(--border); border-radius: 50%;
+      background: var(--surface); color: var(--muted);
+      font: inherit; font-size: .72rem; font-weight: 700; line-height: 1;
+      cursor: pointer; vertical-align: middle;
+    }
+    .help-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .help-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+    html:not(.js) .help-btn { display: none; } /* ohne JS gibt es keinen Flyout-Inhalt */
+
+    .help-flyout {
+      position: fixed; z-index: 90;
+      width: min(21rem, calc(100vw - 2rem));
+      max-height: min(26rem, calc(100vh - 2rem));
+      overflow: auto;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: var(--shadow);
+      padding: .9rem 2.2rem .9rem 1.1rem;
+    }
+    .help-flyout[hidden] { display: none; }
+    .help-flyout h3 { margin: 0 0 .25rem; font-size: .95rem; }
+    .help-flyout p { margin: 0; font-size: .88rem; color: var(--muted); }
+    .help-flyout ul { margin: .35rem 0 0; padding-left: 1.1rem; font-size: .88rem; color: var(--muted); }
+    .help-flyout li { margin-top: .3rem; }
+    .help-flyout li b, .help-flyout p b { color: var(--text); }
+    .help-flyout .help-foot {
+      margin-top: .6rem; padding-top: .5rem; border-top: 1px dashed var(--border);
+      font-size: .8rem;
+    }
+    .help-flyout .close {
+      position: absolute; top: .45rem; right: .45rem;
+      width: 1.6rem; height: 1.6rem; padding: 0;
+      border: 0; background: none; color: var(--muted);
+      font: inherit; font-size: 1.15rem; line-height: 1; cursor: pointer; border-radius: 50%;
+    }
+    .help-flyout .close:hover { color: var(--text); background: var(--bg); }
+
+    /* ---------- Selects (Chevron als Data-URI, kein Netzwerk) ---------- */
+    select {
+      appearance: none; -webkit-appearance: none;
+      font: inherit; color: var(--text);
+      background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888f9c' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+        no-repeat right .65rem center / 1rem;
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: .5rem 2.3rem .5rem .85rem; min-width: 10.5rem; max-width: 100%; cursor: pointer;
+    }
+    select:focus-visible { border-color: var(--accent); outline: none; }
+
+    /* ---------- Segment-Schalter (Radios, rein per CSS gestylt) ---------- */
+    .seg {
+      position: relative; display: inline-flex;
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--bg); overflow: hidden;
+    }
+    .seg input { position: absolute; opacity: 0; pointer-events: none; }
+    .seg label {
+      padding: .42rem .95rem; font-size: .9rem; cursor: pointer;
+      color: var(--muted); user-select: none;
+    }
+    .seg label + input + label { border-left: 1px solid var(--border); }
+    .seg input:checked + label { background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+    .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+    /* ---------- Ausgabe-Panel ---------- */
+    .command {
+      display: block; margin: .5rem 0 1rem;
+      font: 600 .95rem/1.55 ui-monospace, "SF Mono", Consolas, monospace;
+      word-break: break-all;
+      background: var(--bg); border: 1px dashed var(--border);
+      border-radius: 10px; padding: .85rem 1rem;
+    }
+    .hint { color: var(--muted); font-size: .9rem; margin: 0 0 .75rem; }
+    .actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: .65rem 1.25rem; border-radius: 999px;
+      background: var(--accent); color: var(--accent-contrast);
+      border: 0; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .btn--ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+    .btn:hover { filter: brightness(1.06); }
+    .note { min-height: 1.4em; color: var(--accent); font-size: .88rem; font-weight: 600; margin: .6rem 0 0; }
+
+    .output-col h2 { font-size: 1.05rem; margin: 0 0 .35rem; }
+    .output-col h3 {
+      font-size: .78rem; text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin: 1.5rem 0 .35rem;
+    }
+    .output-col ul { margin: 0; padding-left: 1.1rem; font-size: .92rem; }
+    .output-col li + li { margin-top: .3rem; }
+
+    /* ---------- Sequenz decodieren ---------- */
+    #decode-card { margin-top: 0; }
+    .decode-area {
+      width: 100%; min-height: 4.6rem; resize: vertical;
+      font: 500 .95rem/1.55 ui-monospace, "SF Mono", Consolas, monospace;
+      color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: .8rem 1rem; word-break: break-all;
+    }
+    .decode-area:focus-visible { border-color: var(--accent); outline: none; }
+    .decode-status { margin-top: .2rem; }
+    .decode-status ul { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
+    .decode-status li { padding: .18rem 0; }
+    .decode-status .is-ok   { color: var(--ok); font-weight: 600; }
+    .decode-status .is-warn { color: var(--warn); }
+    .decode-status .is-err  { color: var(--danger); font-weight: 600; }
+
+    /* ---------- Sonstiges ---------- */
+    .warn {
+      border: 1px solid var(--danger); color: var(--danger);
+      border-radius: 10px; padding: .7rem 1rem; font-size: .92rem;
+    }
+    .site-footer {
+      border-top: 1px solid var(--border); padding: 1.5rem 0 2.5rem;
+      color: var(--muted); font-size: .85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+          <circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+        </svg>
+        <span>SoftRF Settings<small data-i18n="brandSub">'general purpose' tool · runs fully offline</small></span>
+      </div>
+      <div class="header-actions">
+        <div class="lang-switch" id="lang-switch" role="group" aria-label="Language">
+          <button type="button" data-lang="en" aria-pressed="true">EN</button>
+          <button type="button" data-lang="de" aria-pressed="false">DE</button>
+          <button type="button" data-lang="ru" aria-pressed="false">RU</button>
+        </div>
+        <button id="theme-toggle" class="icon-btn" type="button" aria-label="Switch color scheme" aria-pressed="false">🌙</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <noscript><p class="warn">
+      <strong>JavaScript is required</strong> to calculate the NMEA command and its checksum.<br>
+      JavaScript ist erforderlich, um den NMEA-Befehl und seine Prüfsumme zu berechnen.<br>
+      Требуется JavaScript для расчёта NMEA-команды и её контрольной суммы.
+    </p></noscript>
+
+    <!-- ============ Hilfstexte ============ -->
+    <div class="notices">
+      <p class="info" data-i18n-html="notice">
+        <b>NOTICE!</b> Your browser should have support for JavaScript and DHTML (most modern browsers do).
+      </p>
+      <details class="warn-box">
+        <summary data-i18n="warnSummary">WARNING: T-Motion boards shipped Jan/Feb 2020</summary>
+        <p data-i18n-html="warnBody">
+          <b>WARNING</b>: <a href="https://gitter.im/lyusupov/SoftRF?at=5e38a8f3594a0517c265cfa8" target="_blank" rel="noopener">There were reports</a>
+          that <b>T-Motion</b> boards shipped out in January or February of year 2020 may have a wrong factory
+          pre-installed SoftRF firmware revision. Settings change may cause the board's unexpected behaviour.<br>
+          If you are affected – please, consider to update
+          <a href="https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/STM32/S76G/SoftRF-firmware-v1.0-rc7-S76G.dfu" target="_blank" rel="noopener">the firmware</a>
+          first. Use
+          <a href="https://github.com/lyusupov/SoftRF/wiki/AcSiP-S7xG-flashing-instructions" target="_blank" rel="noopener">these instructions</a>.
+        </p>
+      </details>
+    </div>
+
+    <div class="layout">
+
+      <!-- ============ Einstellungen ============ -->
+      <form id="settings" autocomplete="off">
+
+        <section class="card">
+          <h2 data-i18n="secProtocol">Protocol &amp; region</h2>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="mode">Mode</span><button class="help-btn" type="button" data-help="mode" aria-expanded="false">?</button>
+            </span>
+            <select id="mode" name="mode">
+              <option selected value="0" data-i18n="optNormal">Normal</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="protocol">Protocol</span><button class="help-btn" type="button" data-help="protocol" aria-expanded="false">?</button>
+            </span>
+            <select id="protocol" name="protocol">
+              <option value="0">Legacy</option>
+              <option selected value="1">OGNTP</option>
+              <option value="2">P3I</option>
+              <option value="5">FANET</option>
+              <option value="4">UAT</option>
+              <option value="3">1090ES</option>
+              <option value="7">ADS-L</option>
+              <option value="6">PRoL</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="region">Region</span><button class="help-btn" type="button" data-help="region" aria-expanded="false">?</button>
+            </span>
+            <select id="region" name="region">
+              <option selected value="1">EU</option>
+              <option value="5">RU</option>
+              <option value="6">CN</option>
+              <option value="2">US/CA</option>
+              <option value="4">NZ</option>
+              <option value="3">AU</option>
+              <option value="8">IN</option>
+              <option value="10">KR</option>
+              <option value="9">IL</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="actype">Aircraft type</span><button class="help-btn" type="button" data-help="actype" aria-expanded="false">?</button>
+            </span>
+            <select id="actype" name="actype">
+              <option selected value="1" data-i18n="acGlider">Glider</option>
+              <option value="2" data-i18n="acTow">Towplane</option>
+              <option value="8" data-i18n="acPowered">Powered</option>
+              <option value="9" data-i18n="acJet">Jet</option>
+              <option value="3" data-i18n="acHeli">Helicopter</option>
+              <option value="13" data-i18n="acUAV">UAV</option>
+              <option value="6" data-i18n="acHang">Hang glider</option>
+              <option value="7" data-i18n="acPara">Paraglider</option>
+              <option value="4" data-i18n="acChute">Parachute</option>
+              <option value="11" data-i18n="acBalloon">Balloon</option>
+              <option value="15" data-i18n="acStatic">Static</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="secAlarm">Alarm &amp; radio</h2>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="alarm">Alarm trigger</span><button class="help-btn" type="button" data-help="alarm" aria-expanded="false">?</button>
+            </span>
+            <select id="alarm" name="alarm">
+              <option value="0" data-i18n="optNone">None</option>
+              <option selected value="1" data-i18n="optDistance">Distance</option>
+              <option value="2" data-i18n="optVector">Vector</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="txpower">Tx power</span><button class="help-btn" type="button" data-help="txpower" aria-expanded="false">?</button>
+            </span>
+            <select id="txpower" name="txpower">
+              <option selected value="0" data-i18n="optFull">Full</option>
+              <option value="1" data-i18n="optPowerLow">Low</option>
+              <option value="2" data-i18n="optOff">Off</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="volume">Volume</span><button class="help-btn" type="button" data-help="volume" aria-expanded="false">?</button>
+            </span>
+            <select id="volume" name="volume">
+              <option value="0" data-i18n="optLoud">Loud</option>
+              <option value="1" data-i18n="optVolLow">Low</option>
+              <option selected value="2" data-i18n="optOff">Off</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="secNmea">NMEA sentences</h2>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-gnss" data-i18n="gnss">GNSS</span><button class="help-btn" type="button" data-help="gnss" aria-expanded="false">?</button>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-gnss">
+              <input type="radio" name="gnss" id="gnss-0" value="0"><label for="gnss-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="gnss" id="gnss-1" value="1" checked><label for="gnss-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-priv">Private</span><button class="help-btn" type="button" data-help="priv" aria-expanded="false">?</button>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-priv">
+              <input type="radio" name="priv" id="priv-0" value="0" checked><label for="priv-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="priv" id="priv-1" value="1"><label for="priv-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-legacy">Legacy</span><button class="help-btn" type="button" data-help="legacy" aria-expanded="false">?</button>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-legacy">
+              <input type="radio" name="legacy" id="legacy-0" value="0"><label for="legacy-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="legacy" id="legacy-1" value="1" checked><label for="legacy-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-sens" data-i18n="sens">Sensors</span><button class="help-btn" type="button" data-help="sens" aria-expanded="false">?</button>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-sens">
+              <input type="radio" name="sens" id="sens-0" value="0"><label for="sens-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="sens" id="sens-1" value="1" checked><label for="sens-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="secOutput">Data output</h2>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="nmeaOutput">NMEA output</span><button class="help-btn" type="button" data-help="nmeaOutput" aria-expanded="false">?</button>
+            </span>
+            <select id="nmea" name="nmea">
+              <option value="0" data-i18n="optOff">Off</option>
+              <option value="1" data-i18n="optSerial">Serial</option>
+              <option selected value="4" data-i18n="optUSB">USB</option>
+              <option value="5" data-i18n="optBluetooth">Bluetooth</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="gdl90">GDL90</span><button class="help-btn" type="button" data-help="gdl90" aria-expanded="false">?</button>
+            </span>
+            <select id="gdl90" name="gdl90">
+              <option selected value="0" data-i18n="optOff">Off</option>
+              <option value="1" data-i18n="optSerial">Serial</option>
+              <option value="4" data-i18n="optUSB">USB</option>
+              <option value="5" data-i18n="optBluetooth">Bluetooth</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="d1090">Dump1090</span><button class="help-btn" type="button" data-help="d1090" aria-expanded="false">?</button>
+            </span>
+            <select id="d1090" name="d1090">
+              <option selected value="0" data-i18n="optOff">Off</option>
+              <option value="1" data-i18n="optSerial">Serial</option>
+              <option value="4" data-i18n="optUSB">USB</option>
+              <option value="5" data-i18n="optBluetooth">Bluetooth</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="secPower">Power &amp; privacy</h2>
+          <div class="row">
+            <span class="row-label">
+              <span data-i18n="powersave">Power save</span><button class="help-btn" type="button" data-help="powersave" aria-expanded="false">?</button>
+            </span>
+            <select id="powersave" name="powersave">
+              <option selected value="0" data-i18n="optOff">Off</option>
+              <option value="2">GNSS</option>
+              <option value="4" data-i18n="optNoReceive">No receive</option>
+            </select>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-stealth">Stealth</span><button class="help-btn" type="button" data-help="stealth" aria-expanded="false">?</button>
+              <small data-i18n="stealthSub">Don't transmit position</small>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-stealth">
+              <input type="radio" name="stealth" id="stealth-0" value="0" checked><label for="stealth-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="stealth" id="stealth-1" value="1"><label for="stealth-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label">
+              <span id="lbl-notrack">No track</span><button class="help-btn" type="button" data-help="no_track" aria-expanded="false">?</button>
+              <small data-i18n="notrackSub">Hide from tracking platforms</small>
+            </span>
+            <div class="seg" role="radiogroup" aria-labelledby="lbl-notrack">
+              <input type="radio" name="no_track" id="notrack-0" value="0" checked><label for="notrack-0" data-i18n="optOff">Off</label>
+              <input type="radio" name="no_track" id="notrack-1" value="1"><label for="notrack-1" data-i18n="optOn">On</label>
+            </div>
+          </div>
+        </section>
+
+      </form>
+
+      <!-- ============ Ausgabe ============ -->
+      <aside class="output-col">
+        <div class="card">
+          <h2 data-i18n="outTitle">PSRFC command</h2>
+          <p class="hint" data-i18n="outHint">
+            NMEA control sentence built from the current settings. Send it to your SoftRF
+            device (e.g. via a serial terminal) to store the settings permanently.
+            The checksum is calculated automatically (XOR, NMEA standard).
+          </p>
+
+          <code class="command" id="output"></code>
+
+          <div class="actions">
+            <button class="btn" id="copy" type="button" data-i18n="copy">Copy command</button>
+            <button class="btn btn--ghost" type="reset" form="settings" data-i18n="reset">Reset</button>
+          </div>
+          <p class="note" id="copy-note" role="status"></p>
+
+          <h3 data-i18n="sendTitle">Send to device</h3>
+          <ul>
+            <li><a href="https://googlechromelabs.github.io/serial-terminal/" target="_blank" rel="noopener">Web Serial Terminal</a></li>
+            <li><a href="https://loginov-rocks.github.io/Web-Bluetooth-Terminal/" target="_blank" rel="noopener">Web Bluetooth LE Terminal</a></li>
+          </ul>
+          <p class="hint" style="margin-top:.6rem" data-i18n="linksHint">
+            These links only open when clicked – until then this file loads nothing from the internet.
+          </p>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- ============ Sequenz decodieren ============ -->
+    <section class="card" id="decode-card">
+      <h2 data-i18n="decodeTitle">Decode PSRFC sequence</h2>
+      <p class="hint" data-i18n="decodeHint">
+        Paste an existing $PSRFC… command here to verify its checksum and transfer the
+        settings to the selectors above. Afterwards, the generated command in the output
+        panel shows whether it matches the input.
+      </p>
+      <textarea id="decode-input" class="decode-area" rows="2" spellcheck="false"
+        placeholder="$PSRFC,1,0,1,1,1,1,0,2,2,1,0,1,1,4,0,0,0,0,0*XX"></textarea>
+      <div class="actions" style="margin-top:.75rem">
+        <button class="btn" id="decode-btn" type="button" data-i18n="decodeBtn">Apply &amp; check</button>
+      </div>
+      <div id="decode-status" class="decode-status" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container" data-i18n="footer">
+      Command format, parameter order and defaults identical to the original tool ·
+      one file, no network access, no trackers.
+    </div>
+  </footer>
+
+  <!-- ============ Gemeinsames Hilfe-Flyout ============ -->
+  <div id="help-flyout" class="help-flyout" role="dialog" aria-labelledby="help-title" hidden>
+    <button id="help-close" class="close" type="button" aria-label="Close">×</button>
+    <h3 id="help-title"></h3>
+    <div id="help-body"></div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+      document.documentElement.classList.add('js');
+
+      // Wie im Original-Tool: Protokoll-Version 1, LED-Ring fest auf 2
+      const VERSION = 1;
+      const LED_RING = 2;
+
+      // ---------- Übersetzungen (Standard: Englisch) ----------
+      const I18N = {
+        en: {
+          title: "SoftRF settings tool ('general purpose') – offline",
+          description: "Generate NMEA PSRFC commands for SoftRF devices. Runs fully offline, no external resources.",
+          brandSub: "'general purpose' tool · runs fully offline",
+          themeToggle: "Switch color scheme", langAria: "Language",
+          helpAria: "Help", close: "Close",
+          secProtocol: "Protocol & region", secAlarm: "Alarm & radio",
+          secNmea: "NMEA sentences", secOutput: "Data output", secPower: "Power & privacy",
+          mode: "Mode", protocol: "Protocol", region: "Region", actype: "Aircraft type",
+          alarm: "Alarm trigger", txpower: "Tx power", volume: "Volume",
+          gnss: "GNSS", sens: "Sensors",
+          nmeaOutput: "NMEA output", gdl90: "GDL90", d1090: "Dump1090", powersave: "Power save",
+          stealthSub: "Don't transmit position",
+          notrackSub: "Hide from tracking platforms",
+          optNormal: "Normal",
+          acGlider: "Glider", acTow: "Towplane", acPowered: "Powered", acJet: "Jet",
+          acHeli: "Helicopter", acUAV: "UAV", acHang: "Hang glider", acPara: "Paraglider",
+          acChute: "Parachute", acBalloon: "Balloon", acStatic: "Static",
+          optNone: "None", optDistance: "Distance", optVector: "Vector",
+          optFull: "Full", optPowerLow: "Low", optLoud: "Loud", optVolLow: "Low",
+          optOff: "Off", optOn: "On",
+          optSerial: "Serial", optUSB: "USB", optBluetooth: "Bluetooth", optNoReceive: "No receive",
+          outTitle: "PSRFC command",
+          outHint: "NMEA control sentence built from the current settings. Send it to your SoftRF device (e.g. via a serial terminal) to store the settings permanently. The checksum is calculated automatically (XOR, NMEA standard).",
+          copy: "Copy command", reset: "Reset", copied: "✓ Copied to clipboard",
+          sendTitle: "Send to device",
+          linksHint: "These links only open when clicked – until then this file loads nothing from the internet.",
+          footer: "Command format, parameter order and defaults identical to the original tool · one file, no network access, no trackers.",
+          notice: `<b>NOTICE!</b> Your browser should have support for JavaScript and DHTML (most modern browsers do).`,
+          warnSummary: "WARNING: T-Motion boards shipped Jan/Feb 2020",
+          warnBody: `<b>WARNING</b>: <a href="https://gitter.im/lyusupov/SoftRF?at=5e38a8f3594a0517c265cfa8" target="_blank" rel="noopener">There were reports</a> that <b>T-Motion</b> boards shipped out in January or February of year 2020 may have a wrong factory pre-installed SoftRF firmware revision. Settings change may cause the board's unexpected behaviour.<br>If you are affected – please, consider to update <a href="https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/STM32/S76G/SoftRF-firmware-v1.0-rc7-S76G.dfu" target="_blank" rel="noopener">the firmware</a> first. Use <a href="https://github.com/lyusupov/SoftRF/wiki/AcSiP-S7xG-flashing-instructions" target="_blank" rel="noopener">these instructions</a>.`,
+          decodeTitle: "Decode PSRFC sequence",
+          decodeHint: "Paste an existing $PSRFC… command here to verify its checksum and transfer the settings to the selectors above. Afterwards, the generated command in the output panel shows whether it matches the input.",
+          decodeBtn: "Apply & check",
+          decodeEmpty: "Please paste a $PSRFC… sequence first.",
+          decodeErrFormat: "Invalid format – expected $PSRFC,1,0,…,0*XX (two hex digits after the asterisk).",
+          decodeErrKeyword: "Not a PSRFC sentence: found “{0}”.",
+          decodeErrChecksum: "Checksum mismatch – expected {0}, found {1}. Settings were not applied.",
+          decodeErrLength: "Unexpected number of parameters – expected 19, found {0}.",
+          decodeWarnVersion: "Protocol version {0} – this tool generates version 1.",
+          decodeWarnLEDRing: "LED ring value {0} – this tool always uses 2.",
+          decodeWarnValue: "Value {0} is not offered for {1} – this setting was left unchanged.",
+          decodeApplied: "✓ Checksum valid ({0}) – settings applied to the selectors above.",
+          decodeMatch: "✓ The regenerated command is identical to the input.",
+          decodeDiff: "The regenerated command differs from the input (see the notes above).",
+
+          // ---------- Hilfe-Texte je Einstellung (Quelle: SoftRF-Wiki 'Settings') ----------
+          help: {
+            mode: { t: "Mode", d: `<ul>
+<li><b>Normal</b> – regular operation. The GNSS module is in use as a source of positional information.</li>
+<li><b>Bridge</b> – raw data RF packets forwarding to and from a Wi-Fi client's application (Emulator).</li>
+<li><b>UAV</b> – for use with MAVLINK 1.0 compatible autopilot.</li>
+</ul>` },
+
+            protocol: { t: "Protocol", d: `<ul>
+<li><b>Legacy</b> – Air V6 (2015/18) or V7 (2024)</li>
+<li><b>OGNTP</b> – OGN Tracking Protocol</li>
+<li><b>P3I</b> – PilotAware @ 869.525 MHz</li>
+<li><b>FANET</b> – Skytraxx</li>
+<li><b>UAT</b> – ADS-B @ 978 MHz</li>
+<li><b>1090ES</b> – ADS-B @ 1090 MHz</li>
+<li><b>ADS-L</b> – EASA ADS-L SRD-860 M-Band Issue 1</li>
+<li><b>PRoL</b> – APRS via LoRa @ 433.775 MHz</li>
+</ul>
+<p class="help-foot">Protocol selection is available for SX1276/SX1262 (SoftRF LoRa, Prime MkII, Dongle, Mini, Badge, Academy, Lego, Balkan, Prime MkIII, Midi, Eco) or CC1352 (Uni) radios only. Legacy is the only protocol available for nRF905 radio (active by default in that case). FANET is not applicable for CC1352 (Uni); UAT is applicable for CC1352 (Uni) only; 1090ES is applicable for SDR (ES Edition) only.</p>` },
+
+            region: { t: "Region", d: `<p>Selects the regional ISM frequency plan (sub-1GHz M-Band):</p>
+<ul>
+<li><b>EU</b> – Europe (and United Kingdom) – 868.2 MHz</li>
+<li><b>RU</b> – Russia – 868.8 MHz</li>
+<li><b>CN</b> – China – 470 MHz</li>
+<li><b>US/CA</b> – USA and Canada – 915 MHz</li>
+<li><b>NZ</b> – New Zealand – 869.25 MHz</li>
+<li><b>AU</b> – Australia – 921 MHz</li>
+<li><b>IN</b> – India – 866 MHz</li>
+<li><b>KR</b> – South Korea – 920.9 MHz</li>
+<li><b>IL</b> – Israel – 916.2 MHz</li>
+</ul>
+<p class="help-foot">The region selection is applicable for ISM band radio protocols only. For North America ADS-B UAT (978 MHz) and worldwide ADS-B 1090ES (1090 MHz) you are safe to leave the region value intact.</p>` },
+
+            actype: { t: "Aircraft type", d: `<p>Your aircraft type. It is transmitted with every position beacon and displayed to receivers and other pilots (e.g. on tracking platforms).</p>` },
+
+            alarm: { t: "Alarm trigger", d: `<ul>
+<li><b>None</b> – do not issue any alarms.</li>
+<li><b>Distance</b> – issue a NMEA ($PFLAA) alarm sentence when traffic is in close proximity.</li>
+<li><b>Vector</b> – issue a NMEA ($PFLAA) alarm sentence when traffic is short on intersecting course.</li>
+</ul>` },
+
+            txpower: { t: "Tx power", d: `<ul>
+<li><b>Full</b> – transmit position beacons at rated power (limited by regional regulations).</li>
+<li><b>Low</b> – transmit position beacons at 2 dBm or less.</li>
+<li><b>Off</b> – disable transmitter.</li>
+</ul>` },
+
+            volume: { t: "Volume", d: `<p>Control for volume level of built-in speaker / buzzer available on some SoftRF Editions, such as Standalone, Card, Handheld and Gizmo.</p>
+<p class="help-foot">The "Low" volume level is applicable for the ESP32 platform only.</p>` },
+
+            gnss:   { t: "GNSS",   d: `<p>Enable or disable NMEA GNSS sentences.</p>` },
+            priv:   { t: "Private", d: `<p>Enable or disable SoftRF private NMEA sentences.</p><p class="help-foot">Applicable for the UART port only.</p>` },
+            legacy: { t: "Legacy", d: `<p>Enable or disable FLARM dataport NMEA sentences.</p>` },
+            sens:   { t: "Sensors", d: `<p>Enable or disable NMEA sentences from (optional) I2C sensors.</p>` },
+
+            nmeaOutput: { t: "NMEA output", d: `<p>Interface used to deliver the selected NMEA sentences:</p>
+<ul>
+<li><b>Off</b> – do not deliver any of NMEA sentences.</li>
+<li><b>Serial</b> – deliver over UART.</li>
+<li><b>USB</b> – deliver over built-in USB.</li>
+<li><b>Bluetooth</b> – deliver over built-in Bluetooth.</li>
+</ul>
+<p class="help-foot">USB output is applicable for STM32L0, nRF52, SAMD21, LPC4320, RP2040 and ESP32-S3 platforms only. Bluetooth output is applicable for ESP32, ESP32-S3/C3/C6 and nRF52 platforms only.</p>` },
+
+            gdl90: { t: "GDL90", d: `<p>Delivery interface for Garmin GDL90 data (a format supported by many aviation apps and EFIS displays):</p>
+<ul>
+<li><b>Off</b> – do not deliver Garmin GDL90 data.</li>
+<li><b>Serial</b> – deliver over UART.</li>
+<li><b>USB</b> – deliver over built-in USB.</li>
+<li><b>Bluetooth</b> – deliver over built-in Bluetooth.</li>
+</ul>
+<p class="help-foot">USB output is applicable for STM32L0, nRF52, SAMD21, LPC4320, RP2040 and ESP32-S3 platforms only. Bluetooth output is applicable for ESP32, ESP32-S3/C3/C6 and nRF52 platforms only.</p>` },
+
+            d1090: { t: "Dump1090", d: `<p>Delivery interface for Dump1090 sentences (ADS-B 1090ES traffic, used by many ADS-B visualizers and data collectors):</p>
+<ul>
+<li><b>Off</b> – do not deliver Dump1090 sentences.</li>
+<li><b>Serial</b> – deliver over UART.</li>
+<li><b>USB</b> – deliver over built-in USB.</li>
+<li><b>Bluetooth</b> – deliver over built-in Bluetooth.</li>
+</ul>
+<p class="help-foot">USB output is applicable for STM32L0, nRF52, SAMD21, LPC4320, RP2040 and ESP32-S3 platforms only. Bluetooth output is applicable for ESP32, ESP32-S3/C3/C6 and nRF52 platforms only.</p>` },
+
+            powersave: { t: "Power save", d: `<ul>
+<li><b>Off</b> – do not use any of power saving methods.</li>
+<li><b>GNSS</b> – use GNSS power save method when able.</li>
+<li><b>No Receive</b> – disable radio receive feature to reduce device power consumption.</li>
+</ul>
+<p class="help-foot">The GNSS power save method is currently applicable for the Uni Edition only. "No Receive" is applicable for the Bracelet and Ham Editions only.</p>` },
+
+            stealth: { t: "Stealth", d: `<p>Enable or disable 'Stealth' mode.</p><p class="help-foot">Applicable for the Legacy and OGNTP protocols.</p>` },
+
+            no_track: { t: "No track", d: `<p>Enable or disable a tracking permit for ground stations.</p><p class="help-foot">Applicable for the Legacy and FANET protocols.</p>` }
+          }
+        },
+        de: {
+          title: "SoftRF-Einstellungstool ('general purpose') – offline",
+          description: "NMEA-PSRFC-Befehle für SoftRF-Geräte erzeugen. Läuft vollständig offline, ohne externe Ressourcen.",
+          brandSub: "'general purpose'-Tool · läuft komplett offline",
+          themeToggle: "Farbschema wechseln", langAria: "Sprache",
+          helpAria: "Hilfe", close: "Schließen",
+          secProtocol: "Protokoll & Region", secAlarm: "Alarm & Funk",
+          secNmea: "NMEA-Sätze", secOutput: "Datenausgabe", secPower: "Energie & Privatsphäre",
+          mode: "Modus", protocol: "Protokoll", region: "Region", actype: "Flugzeugtyp",
+          alarm: "Alarm-Auslöser", txpower: "Sendeleistung", volume: "Lautstärke",
+          gnss: "GNSS", sens: "Sensoren",
+          nmeaOutput: "NMEA-Ausgabe", gdl90: "GDL90", d1090: "Dump1090", powersave: "Energiesparen",
+          stealthSub: "Position nicht senden",
+          notrackSub: "Nicht in Tracking-Plattformen zeigen",
+          optNormal: "Normal",
+          acGlider: "Segelflugzeug", acTow: "Schleppflugzeug", acPowered: "Motorflugzeug", acJet: "Jet",
+          acHeli: "Hubschrauber", acUAV: "Drohne", acHang: "Hängegleiter", acPara: "Gleitschirm",
+          acChute: "Fallschirm", acBalloon: "Ballon", acStatic: "Stationär",
+          optNone: "Kein", optDistance: "Abstand", optVector: "Vektor",
+          optFull: "Voll", optPowerLow: "Niedrig", optLoud: "Laut", optVolLow: "Leise",
+          optOff: "Aus", optOn: "An",
+          optSerial: "Seriell", optUSB: "USB", optBluetooth: "Bluetooth", optNoReceive: "Kein Empfang",
+          outTitle: "PSRFC-Befehl",
+          outHint: "Aus den aktuellen Einstellungen erzeugter NMEA-Steuerbefehl. An das SoftRF-Gerät senden (z. B. über ein serielles Terminal), um die Einstellungen dauerhaft zu übernehmen. Die Prüfsumme wird automatisch berechnet (XOR, NMEA-Standard).",
+          copy: "Befehl kopieren", reset: "Zurücksetzen", copied: "✓ In die Zwischenablage kopiert",
+          sendTitle: "Senden an das Gerät",
+          linksHint: "Diese Links werden erst beim Klicken geöffnet – bis dahin lädt diese Datei nichts aus dem Internet.",
+          footer: "Befehlsformat, Parameter-Reihenfolge und Standardwerte identisch zum Original-Tool · eine Datei, kein Netzwerkzugriff, keine Tracker.",
+          notice: `<b>HINWEIS!</b> Ihr Browser sollte JavaScript und DHTML unterstützen (die meisten modernen Browser tun das).`,
+          warnSummary: "WARNUNG: T-Motion-Boards, ausgeliefert Jan./Feb. 2020",
+          warnBody: `<b>WARNUNG</b>: <a href="https://gitter.im/lyusupov/SoftRF?at=5e38a8f3594a0517c265cfa8" target="_blank" rel="noopener">Es gab Berichte</a>, dass <b>T-Motion</b>-Boards, die im Januar oder Februar 2020 ausgeliefert wurden, möglicherweise eine falsche werkseitig vorinstallierte SoftRF-Firmwareversion haben. Eine Änderung der Einstellungen kann unerwartetes Verhalten des Boards verursachen.<br>Falls Sie betroffen sind, aktualisieren Sie bitte zuerst <a href="https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/STM32/S76G/SoftRF-firmware-v1.0-rc7-S76G.dfu" target="_blank" rel="noopener">die Firmware</a>. Verwenden Sie dazu <a href="https://github.com/lyusupov/SoftRF/wiki/AcSiP-S7xG-flashing-instructions" target="_blank" rel="noopener">diese Anleitung</a>.`,
+          decodeTitle: "PSRFC-Sequenz decodieren",
+          decodeHint: "Hier einen vorhandenen $PSRFC…-Befehl einfügen, um die Prüfsumme zu prüfen und die Einstellungen in die Schalter oben zu übernehmen. Der oben erzeugte Befehl zeigt anschließend, ob er mit der Eingabe übereinstimmt.",
+          decodeBtn: "Übernehmen & prüfen",
+          decodeEmpty: "Bitte zuerst eine $PSRFC…-Sequenz einfügen.",
+          decodeErrFormat: "Ungültiges Format – erwartet: $PSRFC,1,0,…,0*XX (zwei Hexziffern nach dem Sternchen).",
+          decodeErrKeyword: "Keine PSRFC-Sequenz: „{0}“ gefunden.",
+          decodeErrChecksum: "Prüfsumme falsch – erwartet {0}, gefunden {1}. Einstellungen wurden nicht übernommen.",
+          decodeErrLength: "Unerwartete Anzahl an Parametern – erwartet 19, gefunden {0}.",
+          decodeWarnVersion: "Protokollversion {0} – dieses Tool erzeugt Version 1.",
+          decodeWarnLEDRing: "LED-Ring-Wert {0} – dieses Tool verwendet immer 2.",
+          decodeWarnValue: "Wert {0} ist für {1} nicht vorgesehen – diese Einstellung blieb unverändert.",
+          decodeApplied: "✓ Prüfsumme gültig ({0}) – Einstellungen in die Schalter oben übernommen.",
+          decodeMatch: "✓ Der neu erzeugte Befehl ist identisch mit der Eingabe.",
+          decodeDiff: "Der neu erzeugte Befehl weicht von der Eingabe ab (siehe Hinweise oben)."
+        },
+        ru: {
+          title: "Инструмент настроек SoftRF ('general purpose') – офлайн",
+          description: "Генерация NMEA-команд PSRFC для устройств SoftRF. Полностью офлайн, без внешних ресурсов.",
+          brandSub: "инструмент «general purpose» · работает полностью офлайн",
+          themeToggle: "Переключить цветовую схему", langAria: "Язык",
+          helpAria: "Справка", close: "Закрыть",
+          secProtocol: "Протокол и регион", secAlarm: "Оповещения и радио",
+          secNmea: "NMEA-сообщения", secOutput: "Вывод данных", secPower: "Питание и приватность",
+          mode: "Режим", protocol: "Протокол", region: "Регион", actype: "Тип воздушного судна",
+          alarm: "Триггер тревоги", txpower: "Мощность передачи", volume: "Громкость",
+          gnss: "GNSS", sens: "Датчики",
+          nmeaOutput: "Вывод NMEA", gdl90: "GDL90", d1090: "Dump1090", powersave: "Энергосбережение",
+          stealthSub: "Не передавать позицию",
+          notrackSub: "Не отображаться на платформах",
+          optNormal: "Обычный",
+          acGlider: "Планер", acTow: "Буксировщик", acPowered: "Моторный", acJet: "Реактивный",
+          acHeli: "Вертолёт", acUAV: "БПЛА", acHang: "Дельтаплан", acPara: "Параплан",
+          acChute: "Парашют", acBalloon: "Аэростат", acStatic: "Стационарный",
+          optNone: "Нет", optDistance: "Дистанция", optVector: "Вектор",
+          optFull: "Полная", optPowerLow: "Низкая", optLoud: "Громко", optVolLow: "Тихо",
+          optOff: "Выкл.", optOn: "Вкл.",
+          optSerial: "COM-порт", optUSB: "USB", optBluetooth: "Bluetooth", optNoReceive: "Без приёма",
+          outTitle: "Команда PSRFC",
+          outHint: "NMEA-команда, сформированная из текущих настроек. Отправьте её на устройство SoftRF (например, через терминал последовательного порта), чтобы сохранить настройки. Контрольная сумма рассчитывается автоматически (XOR, стандарт NMEA).",
+          copy: "Копировать команду", reset: "Сбросить", copied: "✓ Скопировано в буфер обмена",
+          sendTitle: "Отправка на устройство",
+          linksHint: "Ссылки открываются только по щелчку — до этого файл ничего не загружает из интернета.",
+          footer: "Формат команды, порядок параметров и значения по умолчанию идентичны оригинальному инструменту · один файл, без доступа к сети, без трекеров.",
+          notice: `<b>ПРИМЕЧАНИЕ!</b> Ваш браузер должен поддерживать JavaScript и DHTML (большинство современных браузеров это делают).`,
+          warnSummary: "ВНИМАНИЕ: платы T-Motion, поставка янв./фев. 2020 г.",
+          warnBody: `<b>ВНИМАНИЕ</b>: <a href="https://gitter.im/lyusupov/SoftRF?at=5e38a8f3594a0517c265cfa8" target="_blank" rel="noopener">Поступали сообщения</a>, что платы <b>T-Motion</b>, отгруженные в январе или феврале 2020 года, могут иметь неверную версию прошивки SoftRF, предустановленную на заводе. Изменение настроек может привести к непредсказуемому поведению платы.<br>Если это ваш случай — сначала обновите <a href="https://github.com/lyusupov/SoftRF/blob/master/software/firmware/binaries/STM32/S76G/SoftRF-firmware-v1.0-rc7-S76G.dfu" target="_blank" rel="noopener">прошивку</a>. Используйте <a href="https://github.com/lyusupov/SoftRF/wiki/AcSiP-S7xG-flashing-instructions" target="_blank" rel="noopener">эти инструкции</a>.`,
+          decodeTitle: "Декодирование PSRFC-последовательности",
+          decodeHint: "Вставьте сюда существующую команду $PSRFC…, чтобы проверить контрольную сумму и перенести настройки в переключатели выше. Сформированная команда на панели вывода покажет, совпадает ли она с введённой.",
+          decodeBtn: "Применить и проверить",
+          decodeEmpty: "Сначала вставьте последовательность $PSRFC….",
+          decodeErrFormat: "Неверный формат — ожидается $PSRFC,1,0,…,0*XX (две шестнадцатеричные цифры после звёздочки).",
+          decodeErrKeyword: "Это не PSRFC-последовательность: найдено «{0}».",
+          decodeErrChecksum: "Контрольная сумма не совпадает — ожидается {0}, найдено {1}. Настройки не применены.",
+          decodeErrLength: "Неожиданное число параметров — ожидается 19, найдено {0}.",
+          decodeWarnVersion: "Версия протокола {0} — этот инструмент создаёт версию 1.",
+          decodeWarnLEDRing: "Значение LED-кольца {0} — этот инструмент всегда использует 2.",
+          decodeWarnValue: "Значение {0} не предусмотрено для «{1}» — эта настройка оставлена без изменений.",
+          decodeApplied: "✓ Контрольная сумма верна ({0}) — настройки применены к переключателям выше.",
+          decodeMatch: "✓ Заново сформированная команда идентична введённой.",
+          decodeDiff: "Заново сформированная команда отличается от введённой (см. примечания выше)."
+        }
+      };
+
+      const form = document.getElementById('settings');
+      const output = document.getElementById('output');
+      const copyBtn = document.getElementById('copy');
+      const copyNote = document.getElementById('copy-note');
+      const themeBtn = document.getElementById('theme-toggle');
+      const langSwitch = document.getElementById('lang-switch');
+      const metaDesc = document.querySelector('meta[name="description"]');
+      const decodeInput = document.getElementById('decode-input');
+      const decodeBtn = document.getElementById('decode-btn');
+      const decodeStatus = document.getElementById('decode-status');
+
+      let currentDict = I18N.en;
+
+      // Liest den aktuellen Wert eines Selects bzw. einer Radio-Gruppe
+      const val = (name) => form.elements[name].value;
+
+      // Baut den Befehl in exakt der Original-Reihenfolge
+      function buildCommand() {
+        const body = ['PSRFC', VERSION,
+          val('mode'), val('protocol'), val('region'), val('actype'),
+          val('alarm'), val('txpower'), val('volume'), LED_RING,
+          val('gnss'), val('priv'), val('legacy'), val('sens'),
+          val('nmea'), val('gdl90'), val('d1090'),
+          val('stealth'), val('no_track'), val('powersave')
+        ].join(',');
+
+        let sum = 0;
+        for (let i = 0; i < body.length; i++) sum ^= body.charCodeAt(i);
+
+        return '$' + body + '*' + sum.toString(16).toUpperCase().padStart(2, '0');
+      }
+
+      function update() {
+        output.textContent = buildCommand();
+      }
+
+      form.addEventListener('change', update);
+      form.addEventListener('reset', () => requestAnimationFrame(update));
+
+      // ---------- In die Zwischenablage kopieren (mit Fallback) ----------
+      copyBtn.addEventListener('click', async () => {
+        const text = output.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (err) {
+          const range = document.createRange();
+          range.selectNodeContents(output);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.execCommand('copy');
+          sel.removeAllRanges();
+        }
+        copyNote.textContent = currentDict.copied;
+        setTimeout(() => { copyNote.textContent = ''; }, 2500);
+      });
+
+      // ---------- Sprachumschaltung ----------
+      function applyLang(lang) {
+        const dict = I18N[lang] || I18N.en;
+        currentDict = dict;
+
+        document.querySelectorAll('[data-i18n]').forEach((el) => {
+          const key = el.dataset.i18n;
+          if (key in dict) el.textContent = dict[key];
+        });
+
+        document.querySelectorAll('[data-i18n-html]').forEach((el) => {
+          const key = el.dataset.i18nHtml;
+          if (key in dict) el.innerHTML = dict[key];
+        });
+
+        document.title = dict.title;
+        if (metaDesc) metaDesc.setAttribute('content', dict.description);
+        document.documentElement.lang = lang;
+
+        themeBtn.setAttribute('aria-label', dict.themeToggle);
+        langSwitch.setAttribute('aria-label', dict.langAria);
+        langSwitch.querySelectorAll('button').forEach((b) =>
+          b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+
+        // Barrierefreiheit der Hilfe-Buttons und des Flyouts
+        document.querySelectorAll('.help-btn').forEach((b) => {
+          const labelEl = b.previousElementSibling;
+          b.setAttribute('aria-label', dict.helpAria + (labelEl ? ': ' + labelEl.textContent : ''));
+        });
+        document.getElementById('help-close').setAttribute('aria-label', dict.close);
+
+        try { localStorage.setItem('lang', lang); } catch (e) {}
+      }
+
+      langSwitch.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-lang]');
+        if (btn) applyLang(btn.dataset.lang);
+      });
+
+      // Gespeicherte Sprache laden, sonst Englisch (Default)
+      let lang = 'en';
+      try {
+        const saved = localStorage.getItem('lang');
+        if (saved && I18N[saved]) lang = saved;
+      } catch (e) {}
+      applyLang(lang);
+
+      // ---------- Hilfe-Flyouts ----------
+      const flyout = document.getElementById('help-flyout');
+      const flyTitle = document.getElementById('help-title');
+      const flyBody = document.getElementById('help-body');
+      let helpBtn = null;
+
+      const helpEntry = (key) => {
+        const dict = currentDict.help || I18N.en.help; // DE/RU fallen vorerst auf Englisch zurück
+        return dict[key] || I18N.en.help[key];
+      };
+
+      // Positionierung: neben dem ?-Button, bei Platzmangel nach links/unten ausweichen,
+      // auf schmalen Screens als festes Panel unten
+      function positionFlyout(btn) {
+        if (window.matchMedia('(max-width: 40rem)').matches) {
+          flyout.style.position = 'fixed';
+          flyout.style.left = '50%';
+          flyout.style.top = 'auto';
+          flyout.style.bottom = '1rem';
+          flyout.style.transform = 'translateX(-50%)';
+          return;
+        }
+        flyout.style.position = 'fixed';
+        flyout.style.transform = 'none';
+        flyout.style.bottom = 'auto';
+        const r = btn.getBoundingClientRect();
+        const w = flyout.offsetWidth;
+        const h = flyout.offsetHeight;
+        let x = r.left;
+        if (x + w > window.innerWidth - 12) x = window.innerWidth - 12 - w;
+        if (x < 12) x = 12;
+        let y = r.bottom + 8;
+        if (y + h > window.innerHeight - 12) y = r.top - h - 8; // nach oben klappen
+        if (y < 12) y = 12;
+        flyout.style.left = x + 'px';
+        flyout.style.top = y + 'px';
+      }
+
+      function openHelp(btn) {
+        const entry = helpEntry(btn.dataset.help);
+        if (!entry) return;
+        flyTitle.textContent = entry.t;
+        flyBody.innerHTML = entry.d; // Inhalte stammen aus dem Skript, nicht aus Nutzereingaben
+        if (helpBtn && helpBtn !== btn) helpBtn.setAttribute('aria-expanded', 'false');
+        helpBtn = btn;
+        btn.setAttribute('aria-expanded', 'true');
+        flyout.hidden = false;
+        positionFlyout(btn);
+      }
+
+      function closeHelp() {
+        flyout.hidden = true;
+        if (helpBtn) { helpBtn.setAttribute('aria-expanded', 'false'); helpBtn = null; }
+      }
+
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.help-btn');
+        if (btn) {
+          if (helpBtn === btn) closeHelp(); else openHelp(btn);
+          return;
+        }
+        if (!flyout.hidden && !flyout.contains(e.target)) closeHelp();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !flyout.hidden) closeHelp();
+      });
+
+      document.getElementById('help-close').addEventListener('click', closeHelp);
+
+      // Flyout folgt beim Scrollen/Größenändern dem ?-Button
+      window.addEventListener('scroll', () => { if (helpBtn) positionFlyout(helpBtn); }, { passive: true });
+      window.addEventListener('resize', () => { if (helpBtn) positionFlyout(helpBtn); });
+
+      // ---------- Sequenz decodieren (Rückübersetzung) ----------
+      // Index der einzelnen Parameter innerhalb der Sequenz
+      // (PSRFC, version, mode, protocol, region, actype, alarm, txpower, volume,
+      //  ledring, gnss, priv, legacy, sens, nmea, gdl90, d1090, stealth, no_track, powersave)
+      const SELECT_IDX = { mode: 1, protocol: 2, region: 3, actype: 4, alarm: 5,
+                           txpower: 6, volume: 7, nmea: 13, gdl90: 14, d1090: 15, powersave: 18 };
+      const RADIO_IDX  = { gnss: 9, priv: 10, legacy: 11, sens: 12, stealth: 16, no_track: 17 };
+      const VERSION_IDX = 0, LEDRING_IDX = 8;
+
+      const fmt = (s, ...args) => s.replace(/\{(\d+)\}/g, (_, i) => args[+i] ?? '');
+
+      // Anzeigename einer Einstellung (für Warnhinweise)
+      const labelFor = (name) => {
+        if (name === 'nmea') return currentDict.nmeaOutput;
+        return currentDict[name] || name;
+      };
+
+      // Statuszeilen rendern (textContent => keine HTML-Injection aus Nutzereingaben)
+      function renderStatus(items) {
+        decodeStatus.textContent = '';
+        if (!items.length) return;
+        const ul = document.createElement('ul');
+        for (const it of items) {
+          const li = document.createElement('li');
+          li.className = it.cls;
+          li.textContent = it.text;
+          ul.appendChild(li);
+        }
+        decodeStatus.appendChild(ul);
+      }
+
+      function applySequence() {
+        const raw = decodeInput.value;
+        if (!raw.trim()) {
+          renderStatus([{ cls: 'is-warn', text: currentDict.decodeEmpty }]);
+          return;
+        }
+
+        // Nur die erste nicht-leere Zeile verwenden
+        const line = raw.trim().split(/\r?\n/)[0].trim();
+
+        // Format: $PSRFC,...*XX
+        const m = line.match(/^\$([^*]+)\*([0-9A-Fa-f]{2})$/);
+        if (!m) {
+          renderStatus([{ cls: 'is-err', text: currentDict.decodeErrFormat }]);
+          return;
+        }
+        const body = m[1];
+        const given = m[2].toUpperCase();
+
+        // Prüfsumme (XOR über alles zwischen $ und *)
+        let sum = 0;
+        for (let i = 0; i < body.length; i++) sum ^= body.charCodeAt(i);
+        const calc = sum.toString(16).toUpperCase().padStart(2, '0');
+        if (calc !== given) {
+          renderStatus([{ cls: 'is-err', text: fmt(currentDict.decodeErrChecksum, calc, given) }]);
+          return;
+        }
+
+        const tokens = body.split(',');
+        if ((tokens[0] || '').toUpperCase() !== 'PSRFC') {
+          renderStatus([{ cls: 'is-err', text: fmt(currentDict.decodeErrKeyword, tokens[0] || '') }]);
+          return;
+        }
+        const vals = tokens.slice(1).map((s) => s.trim());
+        if (vals.length !== 19) {
+          renderStatus([{ cls: 'is-err', text: fmt(currentDict.decodeErrLength, vals.length) }]);
+          return;
+        }
+
+        const items = [{ cls: 'is-ok', text: fmt(currentDict.decodeApplied, calc) }];
+
+        // Hinweise auf Felder, die dieses Tool nicht steuert
+        if (Number(vals[VERSION_IDX]) !== VERSION) {
+          items.push({ cls: 'is-warn', text: fmt(currentDict.decodeWarnVersion, vals[VERSION_IDX]) });
+        }
+        if (Number(vals[LEDRING_IDX]) !== LED_RING) {
+          items.push({ cls: 'is-warn', text: fmt(currentDict.decodeWarnLEDRing, vals[LEDRING_IDX]) });
+        }
+
+        // Auswahllisten setzen
+        for (const [name, idx] of Object.entries(SELECT_IDX)) {
+          const v = String(Number(vals[idx]));
+          const ctrl = form.elements[name];
+          const ok = Array.from(ctrl.options).some((o) => o.value === v);
+          if (ok) {
+            ctrl.value = v;
+          } else {
+            items.push({ cls: 'is-warn', text: fmt(currentDict.decodeWarnValue, vals[idx], labelFor(name)) });
+          }
+        }
+
+        // Radio-Gruppen setzen
+        for (const [name, idx] of Object.entries(RADIO_IDX)) {
+          const v = String(Number(vals[idx]));
+          const hit = Array.from(form.elements[name]).find((r) => r.value === v);
+          if (hit) {
+            hit.checked = true;
+          } else {
+            items.push({ cls: 'is-warn', text: fmt(currentDict.decodeWarnValue, vals[idx], labelFor(name)) });
+          }
+        }
+
+        // Befehl neu erzeugen und mit der Eingabe vergleichen
+        update();
+        const regenerated = buildCommand();
+        if (regenerated.toUpperCase() === ('$' + body + '*' + calc).toUpperCase()) {
+          items.push({ cls: 'is-ok', text: currentDict.decodeMatch });
+        } else {
+          items.push({ cls: 'is-warn', text: currentDict.decodeDiff });
+        }
+
+        renderStatus(items);
+      }
+
+      decodeBtn.addEventListener('click', applySequence);
+      // Enter (ohne Umschalt) wendet die Sequenz direkt an
+      decodeInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          applySequence();
+        }
+      });
+      // Platzhalter = aktueller Standardbefehl => garantiert gültiges Testbeispiel
+      decodeInput.placeholder = buildCommand();
+
+      // ---------- Farbschema-Umschalter ----------
+      const root = document.documentElement;
+      const prefersDark = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = () => root.dataset.theme === 'dark' || (!root.dataset.theme && prefersDark());
+
+      const syncTheme = () => {
+        themeBtn.textContent = isDark() ? '☀️' : '🌙';
+        themeBtn.setAttribute('aria-pressed', String(isDark()));
+      };
+      themeBtn.addEventListener('click', () => {
+        root.dataset.theme = isDark() ? 'light' : 'dark';
+        try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+        syncTheme();
+      });
+      syncTheme();
+
+      update();
+    })();
+  </script>
+</body>
+</html>
