@@ -6,7 +6,7 @@ The command format, parameter layout and default values are based on the SoftRF 
 
 For detailed information about SoftRF configuration options, please refer to the original documentation:
 
-- [SoftRF Dongle Settings](https://github.com/lyusupov/SoftRF/wiki/Dongle-settings)
+- [SoftRF Dongle Settings](https://github.com/lyusupov/SoftRF/wiki/Settings)
 
 The SoftRF online settings tool generates the NMEA command that can be pasted into a serial or Bluetooth terminal to configure a SoftRF device.
 
